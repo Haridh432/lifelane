@@ -1,0 +1,31 @@
+POC-1 BASELINE
+==============
+
+Hardware:
+ESP32-S3
+SIM7670G
+GNSS
+
+Framework:
+Arduino
+
+Firebase:
+Realtime Database
+
+Upload interval:
+5 seconds
+
+Observed Firebase delay:
+20–30 seconds
+
+Architecture:
+Single-threaded
+
+Active status:
+Calculated by Android
+
+Firebase data:
+Current location only
+
+History:
+Disabled
