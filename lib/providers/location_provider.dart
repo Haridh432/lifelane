@@ -8,6 +8,8 @@ import '../services/storage_service.dart';
 import '../services/location_service.dart';
 import '../services/sharing_hub_service.dart';
 import '../services/notification_service.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 
 /// State Manager for LifeLane Alert managing local user GPS, real-time ESP32 RTDB hardware sync, Dead Reckoning extrapolation, and user 500m Geofence alerts
 class LocationProvider extends ChangeNotifier {
@@ -33,6 +35,12 @@ class LocationProvider extends ChangeNotifier {
 
   TrackerDevice? _selectedTarget;
   bool _isProximityAlertActive = false;
+  bool _isOffline = false;
+
+  double _geofenceRadius = 500.0;
+  bool _sirenEnabled = true;
+
+  StreamSubscription? _internetSubscription;
 
   // Getters
   UserRole get userRole => _userRole;
@@ -42,6 +50,10 @@ class LocationProvider extends ChangeNotifier {
   bool get isSharing => _isSharing;
   bool get isTrackingActive => _isTrackingActive;
   bool get isSirenActive => _isSirenActive;
+  bool get isOffline => _isOffline;
+  
+  double get geofenceRadius => _geofenceRadius;
+  bool get sirenEnabled => _sirenEnabled;
 
   LatLng get currentPosition => _currentPosition;
   double get currentSpeed => _currentSpeed;
@@ -74,8 +86,21 @@ class LocationProvider extends ChangeNotifier {
     final role = await StorageService.getUserRole();
     if (role != null) _userRole = role;
 
-    // Request location permission on startup
-    await requestLocationPermission();
+    _geofenceRadius = await StorageService.getGeofenceRadius();
+    _sirenEnabled = await StorageService.isSirenEnabled();
+
+    // Listen for internet connectivity changes
+    _internetSubscription = InternetConnection().onStatusChange.listen((InternetStatus status) {
+      _isOffline = status == InternetStatus.disconnected;
+      notifyListeners();
+    });
+
+    // Check location permission silently on startup
+    LocationPermission permission = await Geolocator.checkPermission();
+    _hasLocationPermission = (permission == LocationPermission.whileInUse || permission == LocationPermission.always);
+    if (_hasLocationPermission) {
+      await fetchLocation();
+    }
 
     // Initialize local notification service
     await _notificationService.initialize();
@@ -156,6 +181,16 @@ class LocationProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void startBackgroundServiceSafe() async {
+    if (_hasLocationPermission) {
+      try {
+        await FlutterBackgroundService().startService();
+      } catch (e) {
+        debugPrint("Failed to start background service (OS restriction): $e");
+      }
+    }
+  }
+
   /// Start periodic sync loop (Fetches active ESP32 hardware locations from Firebase RTDB & updates local user 500m geofence)
   void startTracking() {
     _isTrackingActive = true;
@@ -173,7 +208,7 @@ class LocationProvider extends ChangeNotifier {
     // Run 1-second ticker for smooth Dead Reckoning vector extrapolation during >10s signal delays
     _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_isTrackingActive) {
-        final updatedDevices = _hubService.tickExtrapolation(_currentPosition);
+        final updatedDevices = _hubService.tickExtrapolation(_currentPosition, _geofenceRadius);
         _updateTargetSelection(updatedDevices);
         notifyListeners();
       }
@@ -205,14 +240,13 @@ class LocationProvider extends ChangeNotifier {
     _lastUpdated = DateTime.now();
 
     // 2. Read active ESP32 hardware trackers under /devices.json on Firebase RTDB (100% read-only)
-    final devices = await _hubService.syncTrackerDevices(_currentPosition);
+    final devices = await _hubService.syncTrackerDevices(_currentPosition, _geofenceRadius);
 
     // 3. Detect if ANY ESP32 tracker is within 500 meters of the user
     final devices500m = _hubService.getDevicesWithin500m();
     _isProximityAlertActive = devices500m.isNotEmpty;
 
-    // 4. Trigger local push notification when an emergency vehicle enters 500m radius of the user
-    await _notificationService.processProximityAlerts(devices, _hubService.formatDistance);
+    // (Push notifications are now strictly handled by the Background Service isolate to prevent duplicates)
 
     // 5. Update active target selection (defaults to nearest approaching device)
     _updateTargetSelection(devices);
@@ -237,8 +271,14 @@ class LocationProvider extends ChangeNotifier {
     }
   }
 
+  void updateGeofenceRadius(double radius) {
+    _geofenceRadius = radius;
+    _performPeriodicUpdate();
+  }
+
   @override
   void dispose() {
+    _internetSubscription?.cancel();
     _updateTimer?.cancel();
     _tickTimer?.cancel();
     super.dispose();

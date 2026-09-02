@@ -6,13 +6,8 @@ class LocationService {
   // Default fallback center (New York / Urban City Center) if GPS is disabled or running on desktop without location hardware
   static const LatLng defaultLocation = LatLng(40.7128, -74.0060);
 
-  /// Check location service & permissions, prompting if needed
   static Future<bool> checkAndRequestPermission() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      return false;
-    }
-
+    // Check permissions first, so the OS popup shows up regardless of GPS toggle state
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
@@ -23,6 +18,12 @@ class LocationService {
 
     if (permission == LocationPermission.deniedForever) {
       return false;
+    }
+
+    // Then check if the physical GPS is toggled on (but don't block the permission request above)
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      // The user has given permission, but they need to turn on their GPS from the quick settings.
     }
 
     return true;
@@ -46,5 +47,10 @@ class LocationService {
   /// Convert Position to LatLng
   static LatLng positionToLatLng(Position pos) {
     return LatLng(pos.latitude, pos.longitude);
+  }
+
+  /// Open app settings for manually enabling permissions
+  static Future<void> openAppSettings() async {
+    await Geolocator.openAppSettings();
   }
 }

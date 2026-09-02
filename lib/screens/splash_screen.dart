@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+
 import 'receiver_screen.dart';
 
 /// Clean, modern Splash Screen that transitions directly to the Receiver Google Map Screen

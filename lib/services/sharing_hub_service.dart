@@ -29,7 +29,7 @@ class SharingHubService {
   List<TrackerDevice> get trackerDevices => List.unmodifiable(_trackerDevices);
 
   /// Synchronize real ESP32 hardware trackers from Firebase Realtime Database
-  Future<List<TrackerDevice>> syncTrackerDevices(LatLng userLocation) async {
+  Future<List<TrackerDevice>> syncTrackerDevices(LatLng userLocation, double radiusMeters) async {
     final fetched = await FirebaseService.fetchTrackerDevices();
     final Set<String> activeIds = {};
 
@@ -59,7 +59,7 @@ class SharingHubService {
       final double distMeters = calculateDistanceMeters(userLocation, deviceLatLng);
       final double bearing = calculateBearing(userLocation, deviceLatLng);
       final String etaStr = calculateETA(distMeters, device.speed);
-      final bool isWithin500 = distMeters <= 500.0;
+      final bool isWithinGeofence = distMeters <= radiusMeters;
 
       return device.copyWithMetrics(
         latitude: lerp.currentLat,
@@ -67,7 +67,7 @@ class SharingHubService {
         distanceFromUser: distMeters,
         bearingFromUser: bearing,
         eta: etaStr,
-        isWithin500m: isWithin500,
+        isWithin500m: isWithinGeofence,
         isExtrapolated: false,
       );
     }).toList();
@@ -79,7 +79,7 @@ class SharingHubService {
   }
 
   /// Update marker positions smoothly during 1-second ticks
-  List<TrackerDevice> tickExtrapolation(LatLng userLocation) {
+  List<TrackerDevice> tickExtrapolation(LatLng userLocation, double radiusMeters) {
     if (_trackerDevices.isEmpty) return _trackerDevices;
 
     _trackerDevices = _trackerDevices.map((device) {
@@ -100,7 +100,7 @@ class SharingHubService {
         final double distMeters = calculateDistanceMeters(userLocation, deviceLatLng);
         final double bearing = calculateBearing(userLocation, deviceLatLng);
         final String etaStr = calculateETA(distMeters, device.speed);
-        final bool isWithin500 = distMeters <= 500.0;
+        final bool isWithinGeofence = distMeters <= radiusMeters;
 
         return device.copyWithMetrics(
           latitude: lerp.currentLat,
@@ -108,7 +108,7 @@ class SharingHubService {
           distanceFromUser: distMeters,
           bearingFromUser: bearing,
           eta: etaStr,
-          isWithin500m: isWithin500,
+          isWithin500m: isWithinGeofence,
         );
       }
       return device;

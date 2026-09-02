@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../models/tracker_device_model.dart';
 
 /// Notification Service handling system push notifications for LifeLane 500m Geofence Alerts (Foreground & Background Heads-Up)
@@ -11,16 +12,13 @@ class NotificationService {
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
 
-  // Track devices that have already triggered a notification while inside 500m
-  final Set<String> _notifiedDeviceIds = {};
-
   /// Initialize local notification channels & background notification permissions
   Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
       const AndroidInitializationSettings initializationSettingsAndroid =
-          AndroidInitializationSettings('@mipmap/ic_launcher');
+          AndroidInitializationSettings('@mipmap/launcher_icon');
 
       const DarwinInitializationSettings initializationSettingsDarwin =
           DarwinInitializationSettings(
@@ -35,12 +33,26 @@ class NotificationService {
       );
 
       await _notifications.initialize(initializationSettings);
+      
+      // (Notification permissions are now exclusively requested by the UI in ReceiverScreen to prevent background isolate crashes)
 
-      // Request notification permissions explicitly for Android 13+
-      final androidImplementation =
-          _notifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-      if (androidImplementation != null) {
-        await androidImplementation.requestNotificationsPermission();
+      // FCM Integration Setup
+      try {
+        final messaging = FirebaseMessaging.instance;
+        
+        // (FCM permissions are exclusively requested by the UI, doing it here crashes the background isolate)
+        
+        final token = await messaging.getToken();
+        debugPrint("[NotificationService] FCM Token: $token");
+
+        // Listen for foreground FCM messages and display them locally
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          if (message.notification != null) {
+            _showForegroundFCMNotification(message.notification!);
+          }
+        });
+      } catch (e) {
+        debugPrint('[NotificationService] FCM setup error (likely missing configuration): $e');
       }
 
       _isInitialized = true;
@@ -51,27 +63,16 @@ class NotificationService {
 
   /// Process list of tracker devices and trigger alerts for any entering 500m radius
   Future<void> processProximityAlerts(List<TrackerDevice> devices, String Function(double) formatDistance) async {
-    final Set<String> currentlyInsideIds = {};
-
     for (final device in devices) {
       if (device.isWithin500m && device.distanceFromUser != null) {
-        currentlyInsideIds.add(device.id);
-
-        // Notify if not already notified during this proximity session
-        if (!_notifiedDeviceIds.contains(device.id)) {
-          final distanceStr = formatDistance(device.distanceFromUser!);
-          await showProximityAlertNotification(
-            deviceId: device.id,
-            deviceName: device.name,
-            distanceText: distanceStr,
-          );
-          _notifiedDeviceIds.add(device.id);
-        }
+        final distanceStr = formatDistance(device.distanceFromUser!);
+        await showProximityAlertNotification(
+          deviceId: device.id,
+          deviceName: device.name,
+          distanceText: distanceStr,
+        );
       }
     }
-
-    // Reset notification state for devices that have moved outside 500m
-    _notifiedDeviceIds.removeWhere((id) => !currentlyInsideIds.contains(id));
   }
 
   /// Trigger high-priority heads-up notification when an Emergency Tracker is within 500 meters
@@ -111,7 +112,8 @@ class NotificationService {
         iOS: iosDetails,
       );
 
-      final int notificationId = deviceId.hashCode.abs() % 10000;
+      // Use a dynamic time-based ID so Android treats each 10-second ping as a NEW alert rather than silently updating the old one
+      final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
 
       await _notifications.show(
         notificationId,
@@ -121,6 +123,43 @@ class NotificationService {
       );
     } catch (e) {
       debugPrint('Error triggering push notification: $e');
+    }
+  }
+
+  /// Display an FCM notification while the app is in the foreground
+  Future<void> _showForegroundFCMNotification(RemoteNotification notification) async {
+    try {
+      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'lifelane_fcm_channel',
+        'FCM Push Alerts',
+        channelDescription: 'Foreground alerts from Firebase Cloud Messaging',
+        importance: Importance.max,
+        priority: Priority.high,
+        color: Color(0xFFEF4444),
+        enableVibration: true,
+        playSound: true,
+      );
+
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentSound: true,
+        presentBadge: true,
+        interruptionLevel: InterruptionLevel.timeSensitive,
+      );
+
+      const NotificationDetails platformDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+
+      await _notifications.show(
+        notification.hashCode,
+        notification.title ?? '🚨 Lifelane Alert',
+        notification.body ?? 'Emergency notification received.',
+        platformDetails,
+      );
+    } catch (e) {
+      debugPrint('Error showing FCM foreground notification: $e');
     }
   }
 }

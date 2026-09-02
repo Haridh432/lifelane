@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "490172964218",
+    "firebase_url": "https://locationsharing-1a5bc-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "locationsharing-1a5bc",
+    "storage_bucket": "locationsharing-1a5bc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:490172964218:android:35a204a811394280444ac3",
+        "android_client_info": {
+          "package_name": "com.lifelane.lifelane"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBfKPdzNStnXmcB9xNmmftGxC0ncv1KNz0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

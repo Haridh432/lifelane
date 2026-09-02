@@ -1,12 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'firebase_options.dart';
 import 'providers/location_provider.dart';
 import 'screens/splash_screen.dart';
+import 'services/background_service.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // If you're going to use other Firebase services in the background, such as Firestore,
+  // make sure you call `initializeApp` before using other Firebase services.
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint("Handling a background message: ${message.messageId}");
+}
 
 /// Entry Point for LifeLane Alert Mobile Application
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    await initializeBackgroundService();
+  } catch (e) {
+    debugPrint("Firebase initialization failed (please run flutterfire configure): $e");
+  }
 
   // Dark status bar icons for clean light theme
   SystemChrome.setSystemUIOverlayStyle(

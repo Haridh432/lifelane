@@ -64,4 +64,28 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }
+
+  // Settings
+  static const String _keySirenEnabled = 'lifelane_siren_enabled';
+  static const String _keyGeofenceRadius = 'lifelane_geofence_radius';
+
+  static Future<bool> isSirenEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keySirenEnabled) ?? true;
+  }
+
+  static Future<void> setSirenEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySirenEnabled, enabled);
+  }
+
+  static Future<double> getGeofenceRadius() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keyGeofenceRadius) ?? 500.0;
+  }
+
+  static Future<void> setGeofenceRadius(double radius) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyGeofenceRadius, radius);
+  }
 }

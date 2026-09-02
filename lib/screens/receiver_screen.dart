@@ -1,9 +1,12 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:flutter_map/flutter_map.dart' as fmap;
 import 'package:latlong2/latlong.dart' as latlong;
 import 'package:provider/provider.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import '../services/location_service.dart';
 import '../providers/location_provider.dart';
 
 const Color textDark = Color(0xFF0F172A);
@@ -30,13 +33,95 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
   void initState() {
     super.initState();
     _osmMapController = fmap.MapController();
-    // Prompt location permission dialog immediately upon screen open
+    // Check permissions and show custom onboarding dialog if missing
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = Provider.of<LocationProvider>(context, listen: false);
       if (!provider.hasLocationPermission) {
-        provider.requestLocationPermission();
+        _showPermissionsDialog(provider);
+      } else {
+        // App is fully mounted and active in foreground, safe to start native service
+        provider.startBackgroundServiceSafe();
       }
     });
+  }
+
+  void _showPermissionsDialog(LocationProvider provider) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            elevation: 0,
+            backgroundColor: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.all(28.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE0F2FE),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.security_rounded, size: 54, color: Color(0xFF0284C7)),
+                  ),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Permissions Required',
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: textDark),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'To keep you safe on the road, LifeLane needs access to your Location and Notifications.\n\nThis allows us to track your 500m geofence and instantly alert you when an emergency vehicle is approaching.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 14, color: textMuted, height: 1.5, fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0284C7),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                      onPressed: () async {
+                        // 1. Request OS Location Permission
+                        bool locGranted = await provider.requestLocationPermission();
+                        if (!locGranted) {
+                          await LocationService.openAppSettings();
+                        }
+                        
+                        // 2. Request OS Notification Permission (For Android 13+)
+                        try {
+                          await FirebaseMessaging.instance.requestPermission(
+                            alert: true, badge: true, sound: true
+                          );
+                        } catch (_) {}
+                        
+                        // 3. NOW it is safe to start the background service
+                        provider.startBackgroundServiceSafe();
+
+                        if (context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      },
+                      child: const Text('Grant Permissions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -146,11 +231,16 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
         backgroundColor: const Color(0xFFF8FAFC),
         elevation: 0,
         title: Row(
-          children: const [
-            Icon(Icons.shield_rounded, color: Color(0xFF0284C7), size: 24),
-            SizedBox(width: 10),
-            Text(
-              'Emergency Receiver - 500m Alert',
+          children: [
+            Image.asset(
+              'assets/images/logo.png',
+              height: 24,
+              errorBuilder: (context, error, stackTrace) => 
+                  const Icon(Icons.shield_rounded, color: Color(0xFF0284C7), size: 24),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              'Lifelane Alert',
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: textDark),
             ),
           ],
@@ -221,6 +311,7 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
               myLocationEnabled: false,
               myLocationButtonEnabled: false,
               zoomControlsEnabled: false,
+              compassEnabled: true, // Added compass
               mapType: gmaps.MapType.normal,
             )
           else
@@ -332,7 +423,6 @@ class _ReceiverScreenState extends State<ReceiverScreen> {
               ),
             ),
           ),
-
           // Location Permission Alert Overlay if missing
           if (!provider.hasLocationPermission)
             Positioned(
