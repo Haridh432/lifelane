@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -7,7 +6,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import '../firebase_options.dart';
-import 'location_service.dart';
 import 'sharing_hub_service.dart';
 import 'notification_service.dart';
 import 'storage_service.dart';
@@ -79,8 +77,6 @@ void onStart(ServiceInstance service) async {
   final notificationService = NotificationService();
   await notificationService.initialize();
 
-  DateTime lastQueryTime = DateTime.fromMillisecondsSinceEpoch(0);
-
   // Run continuous tracking loop every 10 seconds
   Timer.periodic(const Duration(seconds: 10), (timer) async {
     try {
@@ -104,8 +100,6 @@ void onStart(ServiceInstance service) async {
       if (pos == null) return;
       
       final LatLng currentPosition = LatLng(pos.latitude, pos.longitude);
-
-      lastQueryTime = DateTime.now();
 
       // 3. Query Firebase RTDB for active ESP32 devices
       double radius = await StorageService.getGeofenceRadius();
