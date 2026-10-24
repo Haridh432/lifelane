@@ -1,4 +1,4 @@
-# 🚑 LifeLane — Emergency Vehicle Proximity Alert System
+# 🚑 LifeLane — Emergency Vehicle Alert System
 
 > **Real-time ambulance tracking with a 500-meter geofence alert — giving drivers advance warning before the siren reaches them.**
 
